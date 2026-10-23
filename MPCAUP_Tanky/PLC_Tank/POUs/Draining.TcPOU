@@ -13,39 +13,119 @@ VAR_IN_OUT
 	DrainingValve : TValve;
 END_VAR
 VAR
+	LevelLowTimer : TON;
 END_VAR
 ]]></Declaration>
     <Implementation>
       <ST><![CDATA[{region "Aut/Man"}
     // switching state of engine - automatic or manual control (default state is manual)
-  
+    IF DrainingPhase.Cmd.AutCtrl THEN
+        DrainingPhase.State.AutCtrl := TRUE;
+        DrainingPhase.State.ManCtrl := FALSE;
+    END_IF;
+
+    IF DrainingPhase.Cmd.ManCtrl THEN
+        DrainingPhase.State.ManCtrl := TRUE;
+        DrainingPhase.State.AutCtrl := FALSE;
+    END_IF;
+
+    DrainingPhase.Cmd.AutCtrl := FALSE;
+    DrainingPhase.Cmd.ManCtrl := FALSE;
+
+    IF NOT DrainingPhase.State.AutCtrl AND NOT DrainingPhase.State.ManCtrl THEN
+        DrainingPhase.State.ManCtrl := TRUE;
+    END_IF;
 {endregion}
 
 {region "ManCtrl"}
     // processing manual actions - if command is processed, it is sets to FALSE even if can't be processed
-    // Phase commands are start, stop, pause and resume 
-    // Start - open draining valve 
+    // Phase commands are start, stop, pause and resume
+    // Start - open draining valve
     // Stop - close draining valve
     // Pause - close draining valve
     // Resume - open draining valve
     // real states of phase are writed into states in phase structure
-  
+    IF DrainingPhase.State.ManCtrl THEN
+        IF DrainingPhase.Cmd.StartMan AND DrainingPhase.State.Idle THEN
+            DrainingPhase.State.Idle := FALSE;
+            DrainingPhase.State.Done := FALSE;
+            DrainingPhase.State.Running := TRUE;
+            DrainingValve.Cmd.AutCtrl := TRUE; // phase drives the valve in automatic mode
+        END_IF;
+
+        IF DrainingPhase.Cmd.StopMan AND (DrainingPhase.State.Running OR DrainingPhase.State.Paused) THEN
+            DrainingPhase.State.Running := FALSE;
+            DrainingPhase.State.Paused := FALSE;
+            DrainingPhase.State.Idle := TRUE;
+        END_IF;
+
+        IF DrainingPhase.Cmd.PauseMan AND DrainingPhase.State.Running THEN
+            DrainingPhase.State.Running := FALSE;
+            DrainingPhase.State.Paused := TRUE;
+        END_IF;
+
+        IF DrainingPhase.Cmd.ResumeMan AND DrainingPhase.State.Paused THEN
+            DrainingPhase.State.Paused := FALSE;
+            DrainingPhase.State.Running := TRUE;
+            DrainingValve.Cmd.AutCtrl := TRUE;
+        END_IF;
+    END_IF;
+
+    DrainingPhase.Cmd.StartMan := FALSE;
+    DrainingPhase.Cmd.StopMan := FALSE;
+    DrainingPhase.Cmd.PauseMan := FALSE;
+    DrainingPhase.Cmd.ResumeMan := FALSE;
 {endregion}
 
 {region "AutCtrl"}
     //if request to run in automatic mode -> set auto request to open of filling valve to 1 and close to 0, if not open 0 close 1
     // commands should be sets to false after their processing
-   
+    IF DrainingPhase.State.AutCtrl THEN
+        IF DrainingPhase.Cmd.StartAut AND NOT DrainingPhase.State.Running THEN
+            DrainingPhase.State.Idle := FALSE;
+            DrainingPhase.State.Paused := FALSE;
+            DrainingPhase.State.Done := FALSE;
+            DrainingPhase.State.Running := TRUE;
+            DrainingValve.Cmd.AutCtrl := TRUE;
+        END_IF;
+
+        IF DrainingPhase.Cmd.StopAut THEN
+            DrainingPhase.State.Running := FALSE;
+            DrainingPhase.State.Paused := FALSE;
+            DrainingPhase.State.Idle := TRUE;
+        END_IF;
+    END_IF;
+
+    DrainingPhase.Cmd.StartAut := FALSE;
+    DrainingPhase.Cmd.StopAut := FALSE;
 {endregion}
 {region "Done"}
     //every phase should have finish condition - draining phase - if water level is below requested level
     //after that done state should be setted to 1
-   
+    // level signal is noisy (+-2.5 cm) - level has to stay below the limit for a while, the rest of water flows out meanwhile
+    LevelLowTimer(IN := DrainingPhase.State.Running AND (DrainingPhase.WaterLevel <= DrainingPhase.ParamDrainLevel), PT := T#5S);
+    IF LevelLowTimer.Q THEN
+        DrainingPhase.State.Running := FALSE;
+        DrainingPhase.State.Idle := TRUE;
+        DrainingPhase.State.Done := TRUE;
+    END_IF;
+
+    // command reset done resets done state and than resets command
+    IF DrainingPhase.Cmd.ResetDone THEN
+        DrainingPhase.State.Done := FALSE;
+        DrainingPhase.Cmd.ResetDone := FALSE;
+    END_IF;
 {endregion}
 
-{region "States"} 
+{region "States"}
     //Command valve in cases of states
-   
+    IF DrainingPhase.State.Running THEN
+        DrainingValve.Cmd.Req2OpenAut := TRUE;
+        DrainingValve.Cmd.Req2CloseAut := FALSE;
+    ELSE
+        DrainingValve.Cmd.Req2OpenAut := FALSE;
+        DrainingValve.Cmd.Req2CloseAut := TRUE;
+    END_IF;
 {endregion}
 
 // delault state of phase - if not any state sets state to idle
@@ -63,22 +143,8 @@ ELSE
 END_IF;
 
 //Ponechte pro moznost retezeni volani bloku v LAD
-doEnabled := diEnabled;]]></ST>
+doEnabled := diEnabled;
+]]></ST>
     </Implementation>
-    <LineIds Name="Draining">
-      <LineId Id="10" Count="1" />
-      <LineId Id="24" Count="10" />
-      <LineId Id="76" Count="5" />
-      <LineId Id="95" Count="0" />
-      <LineId Id="97" Count="3" />
-      <LineId Id="112" Count="4" />
-      <LineId Id="123" Count="1" />
-      <LineId Id="126" Count="0" />
-      <LineId Id="154" Count="11" />
-      <LineId Id="138" Count="0" />
-      <LineId Id="153" Count="0" />
-      <LineId Id="139" Count="0" />
-      <LineId Id="9" Count="0" />
-    </LineIds>
   </POU>
 </TcPlcObject>

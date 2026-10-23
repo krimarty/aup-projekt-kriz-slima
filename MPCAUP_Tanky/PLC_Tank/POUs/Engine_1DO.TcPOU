@@ -23,50 +23,110 @@ END_VAR
     <Implementation>
       <ST><![CDATA[{region "RunState"}
     // set real state of engine run into engine structure
-  
+    ioEngStruct.State.Run := iRunning;
 {endregion}
 
-{region "Running time"} 
+{region "Running time"}
     // counting running time of engine - (motoseconds in real situation it should be moto hours)
     // detection rising edge of input secimp - should be conected 1Hz internal clock from PLC
-	
+    ioEngStruct.RisingEdgeTrigger(CLK := iSecImp);
+    secImpEdge := ioEngStruct.RisingEdgeTrigger.Q;
+
+    IF secImpEdge AND ioEngStruct.State.Run THEN
+        ioEngStruct.State.RT := ioEngStruct.State.RT + 1;
+    END_IF;
+
+    // operator can preset running time (e.g. after service) - positive value is taken over once
+    IF ioEngStruct.Cmd.SetRT > 0 THEN
+        ioEngStruct.State.RT := ioEngStruct.Cmd.SetRT;
+        ioEngStruct.Cmd.SetRT := 0;
+    END_IF;
 {endregion}
-	 
- 
+
+
 {region "Manual/Automat"}
 	// switching state of engine - automatic or manual control (default state is manual)
-	
+    IF ioEngStruct.Cmd.AutCtrl THEN
+        ioEngStruct.State.AutCtrl := TRUE;
+        ioEngStruct.State.ManCtrl := FALSE;
+    END_IF;
+
+    IF ioEngStruct.Cmd.ManCtrl THEN
+        ioEngStruct.State.ManCtrl := TRUE;
+        ioEngStruct.State.AutCtrl := FALSE;
+    END_IF;
+
+    ioEngStruct.Cmd.AutCtrl := FALSE;
+    ioEngStruct.Cmd.ManCtrl := FALSE;
+
+    IF NOT ioEngStruct.State.AutCtrl AND NOT ioEngStruct.State.ManCtrl THEN
+        ioEngStruct.State.ManCtrl := TRUE;
+    END_IF;
 {endregion}
-	 
+
 {region "MayRun / MayAutoRun"}
 	// setting auxilary signals (may run, may auto run) - MR AND NOT MAR - eng should be started in manual mode,
     // MAR - should be started in automatic mode
     ioEngStruct.State.MayRun := (ioEngStruct.State.ManCtrl AND NOT(ioEngStruct.State.GenErr));
 	ioEngStruct.State.MayAutoRun := (ioEngStruct.State.AutCtrl AND NOT(ioEngStruct.State.GenErr));
-		 
-			  
+
+
 {endregion}
-	 
+
 {region "ManCtrl"}
 	// processing manual actions - if command is processed, it is set to FALSE even if can't be processed
     // Engine commands are turn off (stop) and turn on (start)
-	
+    IF ioEngStruct.State.ManCtrl THEN
+        IF ioEngStruct.Cmd.TurnOnMan AND ioEngStruct.State.MayRun THEN
+            ioEngStruct.State.RunOut := TRUE;
+        END_IF;
+
+        IF ioEngStruct.Cmd.TurnOffMan THEN
+            ioEngStruct.State.RunOut := FALSE;
+        END_IF;
+    END_IF;
+
+    ioEngStruct.Cmd.TurnOnMan := FALSE;
+    ioEngStruct.Cmd.TurnOffMan := FALSE;
 {endregion}
-	 
+
 {region "AutCtrl"}
 	//if request to run in automatic mode set outputs to right states if MAR
     //AutoRequest shouldn't be reseted to false state
-    
+    IF ioEngStruct.State.AutCtrl THEN
+        ioEngStruct.State.RunOut := ioEngStruct.Cmd.Req2RunAutCtrl AND ioEngStruct.State.MayAutoRun;
+    END_IF;
 {endregion}
-	 
+
 {region "Error states"}
-	// definition of error states 
-	// error - input from digital input of plc - fyzical state of engine 
+	// definition of error states
+	// error - input from digital input of plc - fyzical state of engine
 	// calculating start up fail - if output is sets to start engine, it's expected feedback from running signal in defined time, if feedback doesn't show in this time, it should be start up fail error
 	// merge of these two error is general error
-	
+    ioEngStruct.State.Err := iError;
+
+    ioEngStruct.StartupFailTimer(IN := ioEngStruct.State.RunOut AND NOT ioEngStruct.State.Run, PT := ioEngStruct.Time2Start);
+    tempStartupFail := ioEngStruct.StartupFailTimer.Q;
+    ioEngStruct.State.StartupFailTime := TIME_TO_INT(ioEngStruct.StartupFailTimer.ET / 1000);
+
+    IF tempStartupFail THEN
+        ioEngStruct.State.StartUpFail := TRUE;
+    END_IF;
+
+    // start up fail can be reseted by operator, command resetSUF, resets SUF and engine should be started again
+    IF ioEngStruct.Cmd.ResetSUF THEN
+        ioEngStruct.State.StartUpFail := FALSE;
+        ioEngStruct.Cmd.ResetSUF := FALSE;
+    END_IF;
+
+    ioEngStruct.State.GenErr := ioEngStruct.State.Err OR ioEngStruct.State.StartUpFail;
+
+    // if error state exists output should be in stop state
+    IF ioEngStruct.State.GenErr THEN
+        ioEngStruct.State.RunOut := FALSE;
+    END_IF;
 {endregion}
-	 
+
 oRun := ioEngStruct.State.RunOut;
 
 {region "StatusInt"}
@@ -82,46 +142,9 @@ oRun := ioEngStruct.State.RunOut;
         ELSE
             ioEngStruct.State.StateInt := Global.Err;
         END_IF;
-    END_IF; 
-{endregion}]]></ST>
+    END_IF;
+{endregion}
+]]></ST>
     </Implementation>
-    <LineIds Name="Engine_1DO">
-      <LineId Id="367" Count="2" />
-      <LineId Id="25" Count="0" />
-      <LineId Id="371" Count="0" />
-      <LineId Id="370" Count="0" />
-      <LineId Id="45" Count="1" />
-      <LineId Id="68" Count="0" />
-      <LineId Id="40" Count="0" />
-      <LineId Id="54" Count="0" />
-      <LineId Id="366" Count="0" />
-      <LineId Id="9" Count="0" />
-      <LineId Id="103" Count="0" />
-      <LineId Id="109" Count="0" />
-      <LineId Id="71" Count="0" />
-      <LineId Id="126" Count="1" />
-      <LineId Id="130" Count="2" />
-      <LineId Id="144" Count="0" />
-      <LineId Id="276" Count="1" />
-      <LineId Id="128" Count="0" />
-      <LineId Id="159" Count="1" />
-      <LineId Id="164" Count="1" />
-      <LineId Id="180" Count="0" />
-      <LineId Id="161" Count="0" />
-      <LineId Id="190" Count="1" />
-      <LineId Id="194" Count="1" />
-      <LineId Id="201" Count="0" />
-      <LineId Id="192" Count="0" />
-      <LineId Id="202" Count="1" />
-      <LineId Id="206" Count="3" />
-      <LineId Id="205" Count="0" />
-      <LineId Id="204" Count="0" />
-      <LineId Id="256" Count="0" />
-      <LineId Id="280" Count="1" />
-      <LineId Id="259" Count="0" />
-      <LineId Id="390" Count="11" />
-      <LineId Id="262" Count="0" />
-      <LineId Id="260" Count="0" />
-    </LineIds>
   </POU>
 </TcPlcObject>

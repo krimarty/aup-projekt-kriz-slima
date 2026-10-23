@@ -14,12 +14,13 @@ VAR_IN_OUT
 END_VAR
 VAR
 	pidParameters : ST_CTRL_PID_PARAMS;
+	pidMode : E_CTRL_MODE;
 END_VAR
 ]]></Declaration>
     <Implementation>
       <ST><![CDATA[pidParameters.fKp := 10; //P
-pidParameters.tTn := T#2S; //I
-pidParameters.tTv := T#0.5S; //D
+pidParameters.tTn := T#20S; //I - soustava ~1.45 C/s pri 100 %, ztraty ~0.4 C/s; rychlejsi I kmita
+pidParameters.tTv := T#0S; //D vypnuto - cidlo teploty je zasumene
 pidParameters.tCtrlCycleTime := T#200MS;
 pidParameters.tTaskCycleTime := T#100MS;
 pidParameters.fOutMaxLimit := 100;
@@ -27,84 +28,111 @@ pidParameters.fOutMinLimit := 0;
 pidParameters.bDInTheFeedbackPath := FALSE;
 pidParameters.bPInTheFeedbackPath := FALSE;
 pidParameters.bARWOnIPartOnly := FALSE;
-pidParameters.tTd := T#100MS; 
+pidParameters.tTd := T#100MS;
 
-ioHeatStruct.PID(
-	fSetpointValue := ioHeatStruct.ParamHeatingSetPointAutomat, 
-	fActualValue := iWaterTemp, 
-	fManSyncValue := ioHeatStruct.ParamHeatingPowerManual,
-	bSync := ioHeatStruct.State.ManCtrl,
-	eMode := E_CTRL_MODE.eCTRL_MODE_ACTIVE, // automatic mode of PID component
-	stParams := pidParameters);
 
-ioHeatStruct.State.HeatingOut := ioHeatStruct.PID.fOut;
-
-	 
 {region "Manual/Automat"}
 // switching state of engine - automatic or manual control (default state is manual)
+IF ioHeatStruct.Cmd.AutCtrl THEN
+    ioHeatStruct.State.AutCtrl := TRUE;
+    ioHeatStruct.State.ManCtrl := FALSE;
+END_IF;
 
+IF ioHeatStruct.Cmd.ManCtrl THEN
+    ioHeatStruct.State.ManCtrl := TRUE;
+    ioHeatStruct.State.AutCtrl := FALSE;
+END_IF;
+
+ioHeatStruct.Cmd.AutCtrl := FALSE;
+ioHeatStruct.Cmd.ManCtrl := FALSE;
+
+IF NOT ioHeatStruct.State.AutCtrl AND NOT ioHeatStruct.State.ManCtrl THEN
+    ioHeatStruct.State.ManCtrl := TRUE;
+END_IF;
 {endregion}
-	 
- 
+
+
 {region "ManCtrl"}
 // processing manual actions - if command is processed, it is set to FALSE even if can't be processed
 // Engine commands are turn off (stop) and turn on (start)
+IF ioHeatStruct.State.ManCtrl THEN
+    IF ioHeatStruct.Cmd.TurnOnMan AND NOT ioHeatStruct.State.GenErr THEN
+        ioHeatStruct.State.EnableOut := TRUE;
+    END_IF;
 
+    IF ioHeatStruct.Cmd.TurnOffMan THEN
+        ioHeatStruct.State.EnableOut := FALSE;
+    END_IF;
+END_IF;
+
+ioHeatStruct.Cmd.TurnOnMan := FALSE;
+ioHeatStruct.Cmd.TurnOffMan := FALSE;
 {endregion}
- 
+
 {region "AutCtrl"}
 //if request to run in automatic mode set outputs to right states if MAR
 //AutoRequest shouldn't be reseted to false state
-
+IF ioHeatStruct.State.AutCtrl THEN
+    ioHeatStruct.State.EnableOut := ioHeatStruct.Cmd.Req2RunAutCtrl AND NOT ioHeatStruct.State.GenErr;
+END_IF;
 {endregion}
- 
+
 {region "Error states"}
 // if water temperature is too high, stop heating and generate error
+// (simulator destroys the tank above 99 C) - error is released after cooling down below 90 C
+ioHeatStruct.ThresholdTimer(IN := iWaterTemp > 95.0, PT := T#1S);
+IF ioHeatStruct.ThresholdTimer.Q THEN
+    ioHeatStruct.State.Err := TRUE;
+ELSIF iWaterTemp < 90.0 THEN
+    ioHeatStruct.State.Err := FALSE;
+END_IF;
 
+ioHeatStruct.State.GenErr := ioHeatStruct.State.Err;
+
+IF ioHeatStruct.State.GenErr THEN
+    ioHeatStruct.State.EnableOut := FALSE;
+END_IF;
 {endregion}
-	 
- 
+
+{region "Power"}
+// PID runs only in automatic mode while heating is enabled, otherwise it is held in reset (no integral wind-up)
+IF ioHeatStruct.State.AutCtrl AND ioHeatStruct.State.EnableOut THEN
+    pidMode := E_CTRL_MODE.eCTRL_MODE_ACTIVE;
+ELSE
+    pidMode := E_CTRL_MODE.eCTRL_MODE_RESET;
+END_IF;
+
+ioHeatStruct.PID(
+	fSetpointValue := ioHeatStruct.ParamHeatingSetPointAutomat,
+	fActualValue := iWaterTemp,
+	fManSyncValue := 0,
+	bSync := FALSE,
+	eMode := pidMode,
+	stParams := pidParameters);
+
+IF NOT ioHeatStruct.State.EnableOut THEN
+    ioHeatStruct.State.HeatingOut := 0;
+ELSIF ioHeatStruct.State.ManCtrl THEN
+    ioHeatStruct.State.HeatingOut := LIMIT(0.0, ioHeatStruct.ParamHeatingPowerManual, 100.0);
+ELSE
+    ioHeatStruct.State.HeatingOut := ioHeatStruct.PID.fOut;
+END_IF;
+
+ioHeatStruct.State.HeatingPower := ioHeatStruct.State.HeatingOut;
+
+IF ioHeatStruct.State.GenErr THEN
+    ioHeatStruct.State.StateInt := Global.Err;
+ELSIF ioHeatStruct.State.EnableOut THEN
+    ioHeatStruct.State.StateInt := Global.Running;
+ELSE
+    ioHeatStruct.State.StateInt := Global.Stop;
+END_IF;
+{endregion}
+
+
 oHeaterPower := ioHeatStruct.State.HeatingOut;
-oHeaterEnable := ioHeatStruct.State.EnableOut;]]></ST>
+oHeaterEnable := ioHeatStruct.State.EnableOut;
+]]></ST>
     </Implementation>
-    <LineIds Name="Heater">
-      <LineId Id="382" Count="1" />
-      <LineId Id="372" Count="0" />
-      <LineId Id="385" Count="0" />
-      <LineId Id="387" Count="0" />
-      <LineId Id="386" Count="0" />
-      <LineId Id="388" Count="4" />
-      <LineId Id="384" Count="0" />
-      <LineId Id="370" Count="0" />
-      <LineId Id="374" Count="0" />
-      <LineId Id="373" Count="0" />
-      <LineId Id="375" Count="2" />
-      <LineId Id="380" Count="0" />
-      <LineId Id="394" Count="0" />
-      <LineId Id="393" Count="0" />
-      <LineId Id="40" Count="0" />
-      <LineId Id="54" Count="0" />
-      <LineId Id="9" Count="0" />
-      <LineId Id="321" Count="0" />
-      <LineId Id="109" Count="0" />
-      <LineId Id="71" Count="0" />
-      <LineId Id="126" Count="0" />
-      <LineId Id="159" Count="1" />
-      <LineId Id="337" Count="1" />
-      <LineId Id="180" Count="0" />
-      <LineId Id="161" Count="0" />
-      <LineId Id="190" Count="1" />
-      <LineId Id="349" Count="1" />
-      <LineId Id="201" Count="0" />
-      <LineId Id="192" Count="0" />
-      <LineId Id="202" Count="1" />
-      <LineId Id="354" Count="0" />
-      <LineId Id="436" Count="0" />
-      <LineId Id="204" Count="0" />
-      <LineId Id="434" Count="0" />
-      <LineId Id="256" Count="0" />
-      <LineId Id="358" Count="0" />
-      <LineId Id="260" Count="0" />
-    </LineIds>
   </POU>
 </TcPlcObject>

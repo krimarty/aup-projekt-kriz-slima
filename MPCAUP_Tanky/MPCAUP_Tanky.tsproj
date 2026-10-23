@@ -1,5 +1,5 @@
 <?xml version="1.0"?>
-<TcSmProject xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.beckhoff.com/schemas/2012/07/TcSmProject" TcSmVersion="1.0" TcVersion="3.1.4024.62">
+<TcSmProject xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.beckhoff.com/schemas/2012/07/TcSmProject" TcSmVersion="1.0" TcVersion="3.1.4024.79">
 	<Project ProjectGUID="{6AF5D0C0-9E5E-46F6-B933-497A746FB724}" Target64Bit="true" ShowHideConfigurations="#x6">
 		<System>
 			<Settings MaxCpus="8">
@@ -28,7 +28,7 @@
 		</System>
 		<Plc>
 			<Project GUID="{E24257DA-2A8A-49A0-98A5-1F7251912541}" Name="PLC_Tank" PrjFilePath="PLC_Tank\PLC_Tank.plcproj" TmcFilePath="PLC_Tank\PLC_Tank.tmc" ReloadTmc="true" AmsPort="851" FileArchiveSettings="#x000e">
-				<Instance Id="#x08502000" TcSmClass="TComPlcObjDef" KeepUnrestoredLinks="2" TmcPath="PLC_Tank\PLC_Tank.tmc" TmcHash="{1E955098-1AEE-0894-35E3-55B6F25AC9CC}">
+				<Instance Id="#x08502000" TcSmClass="TComPlcObjDef" KeepUnrestoredLinks="2" TmcPath="PLC_Tank\PLC_Tank.tmc" TmcHash="{90506824-C88E-DA4A-F6C7-561379A5102F}">
 					<Name>PLC_Tank Instance</Name>
 					<CLSID ClassFactory="TcPlc30">{08500001-0000-0000-F000-000000000064}</CLSID>
 					<Contexts>

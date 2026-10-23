@@ -1,31 +1,105 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.12">
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.16">
   <POU Name="Test" Id="{b48fe353-a43c-460a-bd31-5cbc20fa1301}" SpecialFunc="None">
-    <Declaration><![CDATA[PROGRAM Test
+    <Declaration><![CDATA[ PROGRAM Test
 VAR
+	// Automaticka sekvence varky: plneni -> ohrev (s michanim) -> domichani -> vypousteni (s michanim)
+	// Ovladani online: bStart := TRUE (spusti), bStop := TRUE (zastavi vse), bCyclic := TRUE (opakovat porad dokola)
+	bStart : BOOL;
+	bStop : BOOL;
+	bCyclic : BOOL;
 	State : INT := 0;
+
+	// Parametry receptury
+	FillLevel : REAL := 1.5;		// m (rozsah cidla 0..2 m)
+	ReqTemp : REAL := 60.0;			// °C (nad 40 °C musi bezet michadlo, jinak simulator znici varku)
+	MixTime : TIME := T#20S;		// doba domichani po dosazeni teploty
+	DrainLevel : REAL := 0.03;		// m - hladina povazovana za prazdnou nadrz
+
+	MixTimer : TON;
 END_VAR
 ]]></Declaration>
     <Implementation>
-      <ST><![CDATA[CASE State OF
-	1:  Global.Tank1.Filling.ParamFillLevel := 1.8;
-		Global.Tank1.Filling.Cmd.ManCtrl := TRUE;
-		Global.Tank1.Filling.Cmd.StartMan:= TRUE;
-		IF Global.Tank1.Filling.State.Done = TRUE THEN
-			State := 2;
+      <ST><![CDATA[// FB_Tank feeds the measured level only into Filling phase - draining phase needs it as well
+Global.Tank1.Draining.WaterLevel := Global.Tank1.Filling.WaterLevel;
+
+IF bStop THEN
+	bStop := FALSE;
+	bStart := FALSE;
+	Global.Tank1.Filling.Cmd.StopAut := TRUE;
+	Global.Tank1.Heating.Cmd.StopAut := TRUE;
+	Global.Tank1.Mixing.Cmd.StopAut := TRUE;
+	Global.Tank1.Draining.Cmd.StopAut := TRUE;
+	State := 0;
+END_IF
+
+// any device error - stop filling and heating, mixer keeps running (hot batch must be mixed)
+IF Global.Tank1.GlobalError AND (State > 0) AND (State < 100) THEN
+	Global.Tank1.Filling.Cmd.StopAut := TRUE;
+	Global.Tank1.Heating.Cmd.StopAut := TRUE;
+	State := 100;
+END_IF
+
+MixTimer(IN := (State = 30), PT := MixTime);
+
+CASE State OF
+	0:	// waiting for start
+		IF bStart THEN
+			bStart := FALSE;
+			Global.Tank1.Filling.Cmd.AutCtrl := TRUE;
+			Global.Tank1.Heating.Cmd.AutCtrl := TRUE;
+			Global.Tank1.Mixing.Cmd.AutCtrl := TRUE;
+			Global.Tank1.Draining.Cmd.AutCtrl := TRUE;
+			State := 10;
 		END_IF
-	2: //...
+
+	10:	// filling
+		Global.Tank1.Filling.ParamFillLevel := FillLevel;
+		Global.Tank1.Filling.Cmd.StartAut := TRUE;
+		State := 11;
+	11:	IF Global.Tank1.Filling.State.Done THEN
+			State := 20;
+		END_IF
+
+	20:	// heating to requested temperature, mixer runs the whole time
+		Global.Tank1.Heating.ParamReqTemp := ReqTemp;
+		Global.Tank1.Mixing.ParamTimeSec := 32767; // runs until stopped by the sequence
+		Global.Tank1.Heating.Cmd.StartAut := TRUE;
+		Global.Tank1.Mixing.Cmd.StartAut := TRUE;
+		State := 21;
+	21:	IF Global.Tank1.Heating.State.Done THEN
+			State := 30;
+		END_IF
+
+	30:	// mixing for given time
+		IF MixTimer.Q THEN
+			State := 40;
+		END_IF
+
+	40:	// draining, mixer still runs (water is hot)
+		Global.Tank1.Draining.ParamDrainLevel := DrainLevel;
+		Global.Tank1.Draining.Cmd.StartAut := TRUE;
+		State := 41;
+	41:	IF Global.Tank1.Draining.State.Done THEN
+			Global.Tank1.Mixing.Cmd.StopAut := TRUE;
+			State := 50;
+		END_IF
+
+	50:	// batch finished
+		IF bCyclic THEN
+			State := 10;
+		ELSE
+			State := 0;
+		END_IF
+
+	100: // error - waits for bStop (resets sequence to 0)
+		;
 END_CASE
 ]]></ST>
     </Implementation>
     <LineIds Name="Test">
-      <LineId Id="9" Count="1" />
-      <LineId Id="14" Count="0" />
-      <LineId Id="12" Count="0" />
-      <LineId Id="16" Count="2" />
-      <LineId Id="15" Count="0" />
-      <LineId Id="11" Count="0" />
-      <LineId Id="7" Count="0" />
+      <LineId Id="3" Count="74" />
+      <LineId Id="2" Count="0" />
     </LineIds>
   </POU>
 </TcPlcObject>

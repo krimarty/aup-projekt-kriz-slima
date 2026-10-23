@@ -14,40 +14,121 @@ VAR_IN_OUT
 	MixerEng : TEngine;
 END_VAR
 VAR
+	SecTrig : R_TRIG;
 END_VAR
 ]]></Declaration>
     <Implementation>
       <ST><![CDATA[{region "Aut/Man"}
     // switching state of engine - automatic or manual control (default state is manual)
-  
+    IF MixingPhase.Cmd.AutCtrl THEN
+        MixingPhase.State.AutCtrl := TRUE;
+        MixingPhase.State.ManCtrl := FALSE;
+    END_IF;
+
+    IF MixingPhase.Cmd.ManCtrl THEN
+        MixingPhase.State.ManCtrl := TRUE;
+        MixingPhase.State.AutCtrl := FALSE;
+    END_IF;
+
+    MixingPhase.Cmd.AutCtrl := FALSE;
+    MixingPhase.Cmd.ManCtrl := FALSE;
+
+    IF NOT MixingPhase.State.AutCtrl AND NOT MixingPhase.State.ManCtrl THEN
+        MixingPhase.State.ManCtrl := TRUE;
+    END_IF;
 {endregion}
 
 {region "ManCtrl"}
     // processing manual actions - if command is processed, it is sets to FALSE even if can't be processed
-    // Phase commands are start, stop, pause and resume 
-    // Start - start mixing  
+    // Phase commands are start, stop, pause and resume
+    // Start - start mixing
     // Stop - stop mixing
-    // Pause - stop mixing 
+    // Pause - stop mixing
     // Resume - start mixing
     // real states of phase are writed into states in phase structure
-   
+    IF MixingPhase.State.ManCtrl THEN
+        IF MixingPhase.Cmd.StartMan AND NOT MixingPhase.State.Running AND NOT MixingPhase.State.Paused THEN
+            MixingPhase.State.Idle := FALSE;
+            MixingPhase.State.Done := FALSE;
+            MixingPhase.State.Running := TRUE;
+            MixingPhase.ElapsedTimeSec := 0;
+            MixerEng.Cmd.AutCtrl := TRUE; // phase drives the mixer in automatic mode
+        END_IF;
+
+        IF MixingPhase.Cmd.StopMan AND (MixingPhase.State.Running OR MixingPhase.State.Paused) THEN
+            MixingPhase.State.Running := FALSE;
+            MixingPhase.State.Paused := FALSE;
+            MixingPhase.State.Idle := TRUE;
+        END_IF;
+
+        IF MixingPhase.Cmd.PauseMan AND MixingPhase.State.Running THEN
+            MixingPhase.State.Running := FALSE;
+            MixingPhase.State.Paused := TRUE;
+        END_IF;
+
+        IF MixingPhase.Cmd.ResumeMan AND MixingPhase.State.Paused THEN
+            MixingPhase.State.Paused := FALSE;
+            MixingPhase.State.Running := TRUE;
+            MixerEng.Cmd.AutCtrl := TRUE;
+        END_IF;
+    END_IF;
+
+    MixingPhase.Cmd.StartMan := FALSE;
+    MixingPhase.Cmd.StopMan := FALSE;
+    MixingPhase.Cmd.PauseMan := FALSE;
+    MixingPhase.Cmd.ResumeMan := FALSE;
 {endregion}
 
 {region "AutCtrl"}
     // if request to run in automatic mode -> set auto request to mixing to 1, if not request to mixing is 0
     // commands should be sets to false after their processing
-   
+    IF MixingPhase.State.AutCtrl THEN
+        IF MixingPhase.Cmd.StartAut AND NOT MixingPhase.State.Running THEN
+            MixingPhase.State.Idle := FALSE;
+            MixingPhase.State.Paused := FALSE;
+            MixingPhase.State.Done := FALSE;
+            MixingPhase.State.Running := TRUE;
+            MixingPhase.ElapsedTimeSec := 0;
+            MixerEng.Cmd.AutCtrl := TRUE;
+        END_IF;
+
+        IF MixingPhase.Cmd.StopAut THEN
+            MixingPhase.State.Running := FALSE;
+            MixingPhase.State.Paused := FALSE;
+            MixingPhase.State.Idle := TRUE;
+        END_IF;
+    END_IF;
+
+    MixingPhase.Cmd.StartAut := FALSE;
+    MixingPhase.Cmd.StopAut := FALSE;
 {endregion}
 
 {region "Done"}
     // every phase should have finish condition - mixing phase - if time of runnig is bigger or same as requested
     // after that done state should be setted to 1
- 
+    SecTrig(CLK := iSecImp);
+
+    // only time when the mixer really runs (feedback) is counted
+    IF MixingPhase.State.Running AND MixerEng.State.Run AND SecTrig.Q THEN
+        MixingPhase.ElapsedTimeSec := MixingPhase.ElapsedTimeSec + 1;
+    END_IF;
+
+    IF MixingPhase.State.Running AND (MixingPhase.ElapsedTimeSec >= MixingPhase.ParamTimeSec) THEN
+        MixingPhase.State.Running := FALSE;
+        MixingPhase.State.Idle := TRUE;
+        MixingPhase.State.Done := TRUE;
+    END_IF;
+
+    // command reset done resets done state and than resets command
+    IF MixingPhase.Cmd.ResetDone THEN
+        MixingPhase.State.Done := FALSE;
+        MixingPhase.Cmd.ResetDone := FALSE;
+    END_IF;
 {endregion}
 
 {region "States"}
     //Command mixer in cases of states
-
+    MixerEng.Cmd.Req2RunAutCtrl := MixingPhase.State.Running;
 {endregion}
 
 
@@ -69,16 +150,5 @@ END_IF;
 doEnabled := diEnabled;
 ]]></ST>
     </Implementation>
-    <LineIds Name="Mixing">
-      <LineId Id="10" Count="1" />
-      <LineId Id="24" Count="10" />
-      <LineId Id="78" Count="5" />
-      <LineId Id="99" Count="1" />
-      <LineId Id="103" Count="3" />
-      <LineId Id="123" Count="4" />
-      <LineId Id="132" Count="18" />
-      <LineId Id="9" Count="0" />
-      <LineId Id="166" Count="0" />
-    </LineIds>
   </POU>
 </TcPlcObject>

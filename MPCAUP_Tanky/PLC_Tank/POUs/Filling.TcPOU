@@ -18,34 +18,111 @@ END_VAR
     <Implementation>
       <ST><![CDATA[{region "REGION Aut/Man"}
     // switching state of engine - automatic or manual control (default state is manual)
-  
+    IF FillingPhase.Cmd.AutCtrl THEN
+        FillingPhase.State.AutCtrl := TRUE;
+        FillingPhase.State.ManCtrl := FALSE;
+    END_IF;
+
+    IF FillingPhase.Cmd.ManCtrl THEN
+        FillingPhase.State.ManCtrl := TRUE;
+        FillingPhase.State.AutCtrl := FALSE;
+    END_IF;
+
+    FillingPhase.Cmd.AutCtrl := FALSE;
+    FillingPhase.Cmd.ManCtrl := FALSE;
+
+    IF NOT FillingPhase.State.AutCtrl AND NOT FillingPhase.State.ManCtrl THEN
+        FillingPhase.State.ManCtrl := TRUE;
+    END_IF;
 {endregion}
 
 {region "ManCtrl"}
     // processing manual actions - if command is processed, it is sets to FALSE even if can't be processed
-    // Phase commands are start, stop, pause and resume 
-    // Start - open filling valve 
+    // Phase commands are start, stop, pause and resume
+    // Start - open filling valve
     // Stop - close filling valve
     // Pause - close filling valve
     // Resume - open filling valve
     // real states of phase are writed into states in phase structure
-   
+    IF FillingPhase.State.ManCtrl THEN
+        IF FillingPhase.Cmd.StartMan AND FillingPhase.State.Idle THEN
+            FillingPhase.State.Idle := FALSE;
+            FillingPhase.State.Done := FALSE;
+            FillingPhase.State.Running := TRUE;
+            FillingValve.Cmd.AutCtrl := TRUE; // phase drives the valve in automatic mode
+        END_IF;
+
+        IF FillingPhase.Cmd.StopMan AND (FillingPhase.State.Running OR FillingPhase.State.Paused) THEN
+            FillingPhase.State.Running := FALSE;
+            FillingPhase.State.Paused := FALSE;
+            FillingPhase.State.Idle := TRUE;
+        END_IF;
+
+        IF FillingPhase.Cmd.PauseMan AND FillingPhase.State.Running THEN
+            FillingPhase.State.Running := FALSE;
+            FillingPhase.State.Paused := TRUE;
+        END_IF;
+
+        IF FillingPhase.Cmd.ResumeMan AND FillingPhase.State.Paused THEN
+            FillingPhase.State.Paused := FALSE;
+            FillingPhase.State.Running := TRUE;
+            FillingValve.Cmd.AutCtrl := TRUE;
+        END_IF;
+    END_IF;
+
+    FillingPhase.Cmd.StartMan := FALSE;
+    FillingPhase.Cmd.StopMan := FALSE;
+    FillingPhase.Cmd.PauseMan := FALSE;
+    FillingPhase.Cmd.ResumeMan := FALSE;
 {endregion}
 
 {region "AutCtrl"}
     // if request to run in automatic mode and phase can be run in automatic mode switch phase to running
-   
+    IF FillingPhase.State.AutCtrl THEN
+        IF FillingPhase.Cmd.StartAut AND NOT FillingPhase.State.Running THEN
+            FillingPhase.State.Idle := FALSE;
+            FillingPhase.State.Paused := FALSE;
+            FillingPhase.State.Done := FALSE;
+            FillingPhase.State.Running := TRUE;
+            FillingValve.Cmd.AutCtrl := TRUE;
+        END_IF;
+
+        IF FillingPhase.Cmd.StopAut THEN
+            FillingPhase.State.Running := FALSE;
+            FillingPhase.State.Paused := FALSE;
+            FillingPhase.State.Idle := TRUE;
+        END_IF;
+    END_IF;
+
+    FillingPhase.Cmd.StartAut := FALSE;
+    FillingPhase.Cmd.StopAut := FALSE;
 {endregion}
 
 {region "Done"}
     //every phase should have finish condition - filling phase - if water level is above requested level
     //after that done state should be setted to 1
-   
+    IF FillingPhase.State.Running AND (FillingPhase.WaterLevel >= FillingPhase.ParamFillLevel) THEN
+        FillingPhase.State.Running := FALSE;
+        FillingPhase.State.Idle := TRUE;
+        FillingPhase.State.Done := TRUE;
+    END_IF;
+
+    // command reset done resets done state and than resets command
+    IF FillingPhase.Cmd.ResetDone THEN
+        FillingPhase.State.Done := FALSE;
+        FillingPhase.Cmd.ResetDone := FALSE;
+    END_IF;
 {endregion}
 
-{region "States"} 
+{region "States"}
     //Command valve in cases of states
-
+    IF FillingPhase.State.Running THEN
+        FillingValve.Cmd.Req2OpenAut := TRUE;
+        FillingValve.Cmd.Req2CloseAut := FALSE;
+    ELSE
+        FillingValve.Cmd.Req2OpenAut := FALSE;
+        FillingValve.Cmd.Req2CloseAut := TRUE;
+    END_IF;
 {endregion}
 
 
@@ -64,20 +141,8 @@ ELSE
 END_IF;
 
 // Ponechte pro moznost retezeni volani bloku v LAD
-doEnabled := diEnabled;]]></ST>
+doEnabled := diEnabled;
+]]></ST>
     </Implementation>
-    <LineIds Name="Filling">
-      <LineId Id="152" Count="1" />
-      <LineId Id="166" Count="10" />
-      <LineId Id="206" Count="4" />
-      <LineId Id="224" Count="5" />
-      <LineId Id="241" Count="4" />
-      <LineId Id="252" Count="4" />
-      <LineId Id="294" Count="10" />
-      <LineId Id="268" Count="0" />
-      <LineId Id="311" Count="0" />
-      <LineId Id="269" Count="0" />
-      <LineId Id="9" Count="0" />
-    </LineIds>
   </POU>
 </TcPlcObject>
