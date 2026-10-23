@@ -1,0 +1,29 @@
+# Visual Studio / TwinCAT XAE Shell
+.vs/
+*.suo
+*.user
+UpgradeLog*.htm
+
+# TwinCAT 3 - generated on build / activate
+_Boot/
+_CompileInfo/
+_Libraries/
+_ModuleInstall/
+_Deployment/
+_Repository/
+_AML/
+*.compileinfo
+*.compiled-library
+*.tmc
+*.tmcRefac
+*.tpy
+*.~u
+*.project.~u
+LineIDs.dbg
+LineIDs.dbg.bak
+
+# TwinCAT - backups
+*.bak
+
+# Trial license is bound to this PC (SystemId) and expires after 7 days
+*.tclrs

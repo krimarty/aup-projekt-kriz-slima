@@ -1,0 +1,83 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.13">
+  <POU Name="Filling" Id="{9d4dcb01-ad56-4326-9456-8cd473ff054e}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK Filling
+VAR_INPUT
+	diEnabled : BOOL;
+END_VAR
+VAR_OUTPUT
+	doEnabled : BOOL;
+END_VAR
+VAR_IN_OUT
+	FillingPhase : TPhaseFilling;
+	FillingValve : TValve;
+END_VAR
+VAR
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[{region "REGION Aut/Man"}
+    // switching state of engine - automatic or manual control (default state is manual)
+  
+{endregion}
+
+{region "ManCtrl"}
+    // processing manual actions - if command is processed, it is sets to FALSE even if can't be processed
+    // Phase commands are start, stop, pause and resume 
+    // Start - open filling valve 
+    // Stop - close filling valve
+    // Pause - close filling valve
+    // Resume - open filling valve
+    // real states of phase are writed into states in phase structure
+   
+{endregion}
+
+{region "AutCtrl"}
+    // if request to run in automatic mode and phase can be run in automatic mode switch phase to running
+   
+{endregion}
+
+{region "Done"}
+    //every phase should have finish condition - filling phase - if water level is above requested level
+    //after that done state should be setted to 1
+   
+{endregion}
+
+{region "States"} 
+    //Command valve in cases of states
+
+{endregion}
+
+
+// delault state of phase - if not any state sets state to idle
+IF NOT FillingPhase.State.Idle AND NOT FillingPhase.State.Paused AND NOT FillingPhase.State.Running THEN
+    FillingPhase.State.Idle := 1;
+END_IF;
+
+// write binary states into int value for visualization
+IF FillingPhase.State.Idle THEN
+    FillingPhase.State.Stateint := Global.PhIdle;
+ELSIF FillingPhase.State.Running THEN
+    FillingPhase.State.Stateint := Global.PhRunning;
+ELSE
+    FillingPhase.State.Stateint := Global.PhPause;
+END_IF;
+
+// Ponechte pro moznost retezeni volani bloku v LAD
+doEnabled := diEnabled;]]></ST>
+    </Implementation>
+    <LineIds Name="Filling">
+      <LineId Id="152" Count="1" />
+      <LineId Id="166" Count="10" />
+      <LineId Id="206" Count="4" />
+      <LineId Id="224" Count="5" />
+      <LineId Id="241" Count="4" />
+      <LineId Id="252" Count="4" />
+      <LineId Id="294" Count="10" />
+      <LineId Id="268" Count="0" />
+      <LineId Id="311" Count="0" />
+      <LineId Id="269" Count="0" />
+      <LineId Id="9" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>
